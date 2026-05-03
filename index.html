@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>경이의 P호소 레이드 룰렛</title>
+    <style>
+        body { 
+            background-color: #fff5f6; 
+            /* GitHub Pages용 경로 수정 */
+            background-image: url("images/경이 배경 X.png");
+            background-repeat: no-repeat;
+            background-position: right bottom;
+            background-attachment: fixed;
+            background-size: 250px;
+            font-family: 'NanumSquareRound', sans-serif; 
+            text-align: center; 
+            margin: 0; padding: 0;
+        }
+        .container { 
+            max-width: 600px; margin: 50px auto; padding: 20px; 
+            background-color: rgba(255, 245, 246, 0.9); border-radius: 30px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+        }
+        #raid-list { list-style: none; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin: 20px 0; }
+        #raid-list li { background-color: #ffe4e6; padding: 5px 15px; border-radius: 15px; font-size: 14px; color: #ff6b6b; border: 1px solid #ffb1b1; }
+        
+        #game-visual-container {
+            position: relative; width: 100%; height: 350px; margin: 20px 0;
+            border: 2px dashed #ffb1b1; border-radius: 20px; background: white; 
+            overflow: hidden; display: flex; justify-content: center; align-items: center;
+        }
+        canvas { display: block; max-width: 100%; cursor: pointer; }
+        #roulette-arrow { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 10; color: #ff6b6b; font-size: 30px; display: block; }
+
+        .btn { background-color: #ffb1b1; color: white; border: none; padding: 10px 25px; border-radius: 20px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .btn:hover { background-color: #ff8e8e; transform: translateY(-2px); }
+        .btn:disabled { background-color: #ccc; cursor: not-allowed; }
+        
+        input[type="text"] { padding: 10px; border-radius: 20px; border: 2px solid #ffb1b1; outline: none; width: 200px; }
+        #game-display { font-size: 22px; font-weight: bold; color: #ff6b6b; min-height: 40px; margin: 15px 0; }
+        #instruction { font-size: 14px; color: #888; margin-bottom: 10px; height: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <img src="images/경이 배경 X.png" style="width:150px;" onerror="this.style.display='none'">
+        <h1>경이의 P호소 레이드 룰렛</h1>
+
+        <div id="input-area">
+            <input type="text" id="raid-input" placeholder="레이드 이름 입력" onkeyup="if(window.event.keyCode==13){addRaid()}">
+            <button class="btn" onclick="addRaid()">추가</button>
+        </div>
+
+        <ul id="raid-list"></ul>
+
+        <div id="mode-selection" style="margin-bottom: 20px;">
+            <button id="btn-roulette" class="btn" onclick="setGame('roulette')">룰렛 모드</button>
+            <button id="btn-ladder" class="btn" style="opacity: 0.5;" onclick="setGame('ladder')">사다리 모드</button>
+            <button id="btn-lottery" class="btn" style="opacity: 0.5;" onclick="setGame('lottery')">제비뽑기 모드</button>
+        </div>
+
+        <div id="instruction"></div>
+
+        <div id="game-visual-container">
+            <div id="roulette-arrow">▼</div>
+            <canvas id="main-canvas" width="400" height="350"></canvas>
+            <div id="initial-msg" style="position: absolute; color: #ffb1b1;">레이드를 추가해주세요!</div>
+        </div>
+
+        <div id="game-display"></div>
+
+        <div id="control-panel">
+            <button id="start-btn" class="btn" style="display:none;" onclick="playGame()">P가 될테야!</button>
+            
+            <div id="next-action" style="display:none;">
+                <button class="btn" onclick="prepareNextRound()">다음 레이드</button>
+                <button class="btn" onclick="resetGame()" style="background-color: #ddd; color: #666;">처음부터 다시</button>
+            </div>
+        </div>
+    </div>
+
+<script>
+    let raids = [];
+    let currentGame = 'roulette';
+    let currentAngle = 0;
+    let isAnimating = false;
+    let ladderLines = [];
+    let ladderResults = [];
+    let selectedStartIdx = -1;
+    let finalWinningIdx = -1;
+    let lotteryWinnerIdx = -1;
+    let lotteryClickedIdx = -1;
+
+    const canvas = document.getElementById('main-canvas');
+    const ctx = canvas.getContext('2d');
+    const colors = ["#ffb1b1", "#ffe4e6", "#ff8e8e", "#ffd1d1", "#ffc9c9"];
+
+    canvas.addEventListener('mousedown', function(e) {
+        if (isAnimating || raids.length === 0) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+
+        if (currentGame === 'ladder') {
+            const padding = 50;
+            const spacing = (canvas.width - padding * 2) / (raids.length - 1 || 1);
+            for (let i = 0; i < raids.length; i++) {
+                const lineX = padding + i * spacing;
+                if (Math.abs(x - lineX) < 30 && y < 60) {
+                    selectedStartIdx = i;
+                    playGame();
+                    break;
+                }
+            }
+        } else if (currentGame === 'lottery') {
+            const cols = 3;
+            const boxWidth = 80, boxHeight = 80;
+            const padding = 40;
+            const spacingX = (canvas.width - padding * 2) / cols;
+            raids.forEach((_, i) => {
+                const row = Math.floor(i / cols);
+                const col = i % cols;
+                const bx = padding + col * spacingX + (spacingX - boxWidth) / 2;
+                const by = 50 + row * 100;
+                if (x > bx && x < bx + boxWidth && y > by && y < by + boxHeight) {
+                    lotteryClickedIdx = i;
+                    playGame();
+                }
+            });
+        }
+    });
+
+    function addRaid() {
+        const input = document.getElementById('raid-input');
+        const value = input.value.trim();
+        if (value) {
+            raids.push(value);
+            updateList();
+            input.value = '';
+            refreshUI();
+            draw();
+        }
+    }
+
+    function refreshUI() {
+        const startBtn = document.getElementById('start-btn');
+        const initialMsg = document.getElementById('initial-msg');
+        const instruction = document.getElementById('instruction');
+        initialMsg.style.display = raids.length > 0 ? 'none' : 'block';
+        if (currentGame === 'roulette') {
+            startBtn.style.display = raids.length > 0 ? 'inline-block' : 'none';
+            instruction.innerText = "";
+        } else if (currentGame === 'ladder') {
+            startBtn.style.display = 'none';
+            instruction.innerText = raids.length > 0 ? "출발할 레이드 이름을 클릭하세요!" : "";
+        } else if (currentGame === 'lottery') {
+            startBtn.style.display = 'none';
+            instruction.innerText = raids.length > 0 ? "뽑고 싶은 상자를 클릭하세요!" : "";
+        }
+    }
+
+    function updateList() {
+        document.getElementById('raid-list').innerHTML = raids.map(r => `<li>${r}</li>`).join('');
+    }
+
+    function draw(highlight = null) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (currentGame === 'roulette') drawRoulette();
+        else if (currentGame === 'ladder') drawLadder(highlight);
+        else drawLottery();
+    }
+
+    function drawRoulette() {
+        if (raids.length === 0) return;
+        const arc = (Math.PI * 2) / raids.length;
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        raids.forEach((raid, i) => {
+            const angle = currentAngle + i * arc;
+            ctx.beginPath();
+            ctx.fillStyle = colors[i % colors.length];
+            ctx.moveTo(centerX, centerY);
+            ctx.arc(centerX, centerY, 150, angle, angle + arc);
+            ctx.fill();
+            ctx.strokeStyle = "white";
+            ctx.stroke();
+            ctx.save();
+            ctx.translate(centerX, centerY);
+            ctx.rotate(angle + arc / 2);
+            ctx.textAlign = "center";
+            ctx.fillStyle = "#444";
+            ctx.font = "bold 15px sans-serif";
+            ctx.fillText(raid, 85, 0); 
+            ctx.restore();
+        });
+    }
+
+    function drawLadder(highlightData = null) {
+        if (raids.length === 0) return;
+        const padding = 50, startY = 40, endY = 280;
+        const spacing = (canvas.width - padding * 2) / (raids.length - 1 || 1);
+        if (ladderLines.length === 0) {
+            ladderResults = new Array(raids.length).fill("꽝");
+            ladderResults[Math.floor(Math.random() * raids.length)] = "당첨";
+            for (let i = 0; i < raids.length - 1; i++) {
+                let linesCount = Math.floor(Math.random() * 3) + 2; 
+                for (let j = 0; j < linesCount; j++) {
+                    ladderLines.push({ from: i, y: startY + 30 + Math.random() * (endY - startY - 60) });
+                }
+            }
+        }
+        raids.forEach((raid, i) => {
+            const x = padding + i * spacing;
+            ctx.beginPath(); ctx.strokeStyle = "#ffe4e6"; ctx.lineWidth = 4;
+            ctx.moveTo(x, startY); ctx.lineTo(x, endY); ctx.stroke();
+            ctx.fillStyle = (selectedStartIdx === i) ? "#ff6b6b" : "#ffb1b1";
+            ctx.font = "bold 14px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText(raid, x, startY - 15);
+            if (finalWinningIdx !== -1) {
+                ctx.fillStyle = (ladderResults[i] === "당첨") ? "#ff6b6b" : "#888";
+                ctx.fillText(ladderResults[i], x, endY + 30);
+            } else {
+                ctx.fillStyle = "#ddd"; ctx.fillText("?", x, endY + 30);
+            }
+        });
+        ladderLines.forEach(line => {
+            const x1 = padding + line.from * spacing, x2 = padding + (line.from + 1) * spacing;
+            ctx.beginPath(); ctx.moveTo(x1, line.y); ctx.lineTo(x2, line.y); ctx.stroke();
+        });
+        if (highlightData) {
+            ctx.beginPath(); ctx.arc(highlightData.x, highlightData.y, 10, 0, Math.PI * 2);
+            ctx.fillStyle = "#ff6b6b"; ctx.fill();
+        }
+    }
+
+    function drawLottery() {
+        const cols = 3;
+        const boxWidth = 80, boxHeight = 80;
+        const padding = 40;
+        const spacingX = (canvas.width - padding * 2) / cols;
+        if (lotteryWinnerIdx === -1 && raids.length > 0) {
+            lotteryWinnerIdx = Math.floor(Math.random() * raids.length);
+        }
+        raids.forEach((raid, i) => {
+            const row = Math.floor(i / cols);
+            const col = i % cols;
+            const bx = padding + col * spacingX + (spacingX - boxWidth) / 2;
+            const by = 50 + row * 100;
+            ctx.fillStyle = (lotteryClickedIdx === i) ? "#ff8e8e" : "#ffb1b1";
+            ctx.fillRect(bx, by, boxWidth, boxHeight);
+            ctx.strokeStyle = "white";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(bx, by, boxWidth, boxHeight);
+            ctx.fillStyle = "white";
+            ctx.font = "bold 20px sans-serif";
+            ctx.textAlign = "center";
+            if (lotteryClickedIdx !== -1 && lotteryClickedIdx === i) {
+                const resultText = (i === lotteryWinnerIdx) ? "당첨!" : "꽝";
+                ctx.fillText(resultText, bx + boxWidth/2, by + boxHeight/2 + 7);
+            } else {
+                ctx.fillText(i + 1, bx + boxWidth/2, by + boxHeight/2 + 7);
+            }
+        });
+    }
+
+    function setGame(mode) {
+        if (isAnimating) return;
+        currentGame = mode;
+        resetGameState();
+        document.getElementById('btn-roulette').style.opacity = (mode === 'roulette') ? "1" : "0.5";
+        document.getElementById('btn-ladder').style.opacity = (mode === 'ladder') ? "1" : "0.5";
+        document.getElementById('btn-lottery').style.opacity = (mode === 'lottery') ? "1" : "0.5";
+        document.getElementById('roulette-arrow').style.display = (mode === 'roulette') ? 'block' : 'none';
+        refreshUI();
+        draw();
+    }
+
+    function resetGameState() {
+        ladderLines = []; ladderResults = []; finalWinningIdx = -1; selectedStartIdx = -1;
+        lotteryWinnerIdx = -1; lotteryClickedIdx = -1;
+    }
+
+    function playGame() {
+        if (isAnimating || raids.length === 0) return;
+        isAnimating = true;
+        document.getElementById('start-btn').style.display = 'none';
+        document.getElementById('input-area').style.pointerEvents = 'none';
+        document.getElementById('mode-selection').style.pointerEvents = 'none';
+        document.getElementById('game-display').innerText = "두구두구두구...";
+
+        if (currentGame === 'roulette') {
+            const spinTime = 3000;
+            const startTimestamp = performance.now();
+            const totalRotation = (Math.PI * 2 * 10) + (Math.random() * Math.PI * 2);
+            function animate(timestamp) {
+                const elapsed = timestamp - startTimestamp;
+                const progress = Math.min(elapsed / spinTime, 1);
+                currentAngle = (1 - Math.pow(1 - progress, 3)) * totalRotation;
+                draw();
+                if (progress < 1) requestAnimationFrame(animate);
+                else finishGame();
+            }
+            requestAnimationFrame(animate);
+        } else if (currentGame === 'ladder') {
+            animateLadder();
+        } else if (currentGame === 'lottery') {
+            draw();
+            setTimeout(() => {
+                finishGame(lotteryClickedIdx, lotteryClickedIdx === lotteryWinnerIdx);
+            }, 800);
+        }
+    }
+
+    function animateLadder() {
+        const padding = 50, startY = 40, endY = 280;
+        const spacing = (canvas.width - padding * 2) / (raids.length - 1 || 1);
+        let currentXIdx = selectedStartIdx;
+        let currentPosY = startY;
+        let path = [{x: padding + currentXIdx * spacing, y: startY}];
+        let sortedLines = [...ladderLines].sort((a, b) => a.y - b.y);
+
+        while (currentPosY < endY) {
+            let nextLine = sortedLines.find(l => l.y > currentPosY && (l.from === currentXIdx || l.from === currentXIdx - 1));
+            if (nextLine) {
+                path.push({x: padding + currentXIdx * spacing, y: nextLine.y});
+                currentXIdx = (nextLine.from === currentXIdx) ? currentXIdx + 1 : currentXIdx - 1;
+                path.push({x: padding + currentXIdx * spacing, y: nextLine.y});
+                currentPosY = nextLine.y;
+            } else {
+                path.push({x: padding + currentXIdx * spacing, y: endY});
+                currentPosY = endY;
+            }
+        }
+        let step = 0;
+        function stepAnimate() {
+            if (step < path.length) {
+                draw(path[step]);
+                step++;
+                setTimeout(stepAnimate, 100);
+            } else {
+                finalWinningIdx = currentXIdx;
+                draw();
+                setTimeout(() => finishGame(selectedStartIdx, ladderResults[currentXIdx] === "당첨"), 500);
+            }
+        }
+        stepAnimate();
+    }
+
+    function finishGame(idx, isWin = true) {
+        let selectedName = "";
+        if (currentGame === 'roulette') {
+            const normalizedAngle = (1.5 * Math.PI - currentAngle) % (Math.PI * 2);
+            const finalAngle = normalizedAngle < 0 ? normalizedAngle + Math.PI * 2 : normalizedAngle;
+            let selectedIdx = Math.floor((finalAngle / (Math.PI * 2)) * raids.length);
+            selectedName = raids[selectedIdx];
+            document.getElementById('game-display').innerText = `✨ ${selectedName} 방 만들어!!! ✨`;
+            raids.splice(selectedIdx, 1);
+        } else if (currentGame === 'ladder' || currentGame === 'lottery') {
+            selectedName = raids[idx];
+            if (isWin) {
+                document.getElementById('game-display').innerText = `✨ ${selectedName} 당첨! 방 만들어!!! ✨`;
+                raids.splice(idx, 1);
+            } else {
+                document.getElementById('game-display').innerText = `😥 ${selectedName}은(는) 아니야 다른거 가`;
+            }
+        }
+        setTimeout(() => {
+            updateList();
+            isAnimating = false;
+            document.getElementById('next-action').style.display = 'block';
+        }, 500);
+    }
+
+    function prepareNextRound() {
+        document.getElementById('next-action').style.display = 'none';
+        document.getElementById('game-display').innerText = "";
+        document.getElementById('input-area').style.pointerEvents = 'auto';
+        document.getElementById('mode-selection').style.pointerEvents = 'auto';
+        resetGameState();
+        refreshUI();
+        draw();
+    }
+    function resetGame() { location.reload(); }
+</script>
+</body>
+</html>
