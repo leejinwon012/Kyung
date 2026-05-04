@@ -223,7 +223,7 @@
             instruction.innerText = "";
         } else {
             startBtn.style.display = 'none';
-            instruction.innerText = currentGame === 'ladder' ? "출발할 레이드를 클릭하세요!" : "상자를 클릭하세요!";
+            instruction.innerText = currentGame === 'ladder' ? "레이드 하나 클릭해봐!" : "제비 하나 뽑아봐";
         }
     }
 
@@ -409,7 +409,7 @@
         } else {
             selectedName = raids[idx];
             if (isWin) {
-                document.getElementById('game-display').innerText = `✨ ${selectedName} 당첨! 방 만들어!!! ✨`;
+                document.getElementById('game-display').innerText = `✨ ${selectedName} 방 만들어!!! ✨`;
                 raids.splice(idx, 1);
                 gameFinished = true;
             } else {
