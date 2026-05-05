@@ -224,7 +224,7 @@
             instruction.innerText = "";
         } else {
             startBtn.style.display = 'none';
-            instruction.innerText = currentGame === 'ladder' ? "레이드 하나 클릭해봐!" : "제비 하나 뽑아봐";
+            instruction.innerText = currentGame === 'ladder' ? "번호 하나 클릭해봐!" : "제비 하나 뽑아봐";
         }
     }
 
@@ -270,9 +270,11 @@
     function drawLadder(highlightData = null) {
         const padding = 50, startY = 40, endY = 280;
         const spacing = (canvas.width - padding * 2) / (raids.length - 1 || 1);
+
         if (ladderLines.length === 0) {
-            ladderResults = new Array(raids.length).fill("꽝");
-            ladderResults[Math.floor(Math.random() * raids.length)] = "당첨";
+            // 하단 결과에 입력한 레이드들을 랜덤하게 섞어서 배치
+            ladderResults = [...raids].sort(() => Math.random() - 0.5);
+            
             for (let i = 0; i < raids.length - 1; i++) {
                 let linesCount = Math.floor(Math.random() * 3) + 2; 
                 for (let j = 0; j < linesCount; j++) {
@@ -280,26 +282,39 @@
                 }
             }
         }
-        raids.forEach((raid, i) => {
+
+        raids.forEach((_, i) => {
             const x = padding + i * spacing;
+            
+            // 세로줄 그리기
             ctx.beginPath(); ctx.strokeStyle = "#ffe4e6"; ctx.lineWidth = 4;
             ctx.moveTo(x, startY); ctx.lineTo(x, endY); ctx.stroke();
+
+            // 상단 선택지 (숫자)
             ctx.fillStyle = (selectedStartIdx === i) ? "#ff6b6b" : "#ffb1b1";
-            ctx.font = "bold 14px sans-serif"; ctx.textAlign = "center";
-            ctx.fillText(raid, x, startY - 15);
+            ctx.font = "bold 16px sans-serif"; ctx.textAlign = "center";
+            ctx.fillText(i + 1, x, startY - 15);
+
+            // 하단 결과 (사다리 타기가 끝나면 레이드 이름 공개)
             if (finalWinningIdx !== -1) {
-                ctx.fillStyle = (ladderResults[i] === "당첨") ? "#ff6b6b" : "#888";
+                ctx.fillStyle = (finalWinningIdx === i) ? "#ff6b6b" : "#888";
+                ctx.font = "bold 13px sans-serif";
                 ctx.fillText(ladderResults[i], x, endY + 30);
             } else {
                 ctx.fillStyle = "#ddd"; ctx.fillText("?", x, endY + 30);
             }
         });
+
+        // 가로줄 그리기
         ladderLines.forEach(line => {
             const x1 = padding + line.from * spacing, x2 = padding + (line.from + 1) * spacing;
-            ctx.beginPath(); ctx.moveTo(x1, line.y); ctx.lineTo(x2, line.y); ctx.stroke();
+            ctx.beginPath(); ctx.strokeStyle = "#ffe4e6"; ctx.lineWidth = 4;
+            ctx.moveTo(x1, line.y); ctx.lineTo(x2, line.y); ctx.stroke();
         });
+
+        // 애니메이션 포인트 그리기
         if (highlightData) {
-            ctx.beginPath(); ctx.arc(highlightData.x, highlightData.y, 10, 0, Math.PI * 2);
+            ctx.beginPath(); ctx.arc(highlightData.x, highlightData.y, 8, 0, Math.PI * 2);
             ctx.fillStyle = "#ff6b6b"; ctx.fill();
         }
     }
@@ -391,7 +406,7 @@
             } else {
                 finalWinningIdx = currentXIdx;
                 draw();
-                setTimeout(() => finishGame(selectedStartIdx, ladderResults[currentXIdx] === "당첨"), 500);
+                setTimeout(() => finishGame(), 500);
             }
         }
         stepAnimate();
@@ -399,35 +414,43 @@
 
     function finishGame(idx, isWin = true) {
         let selectedName = "";
+        
         if (currentGame === 'roulette') {
             const normalizedAngle = (1.5 * Math.PI - currentAngle) % (Math.PI * 2);
             const finalAngle = normalizedAngle < 0 ? normalizedAngle + Math.PI * 2 : normalizedAngle;
             let selectedIdx = Math.floor((finalAngle / (Math.PI * 2)) * raids.length);
             selectedName = raids[selectedIdx];
-            document.getElementById('game-display').innerText = `✨ ${selectedName} 방 만들어!!! ✨`;
             raids.splice(selectedIdx, 1);
-            gameFinished = true;
-        } else {
+        } 
+        else if (currentGame === 'ladder') {
+            // 사다리 타기 결과: 도착한 위치(finalWinningIdx)에 있는 레이드 이름
+            selectedName = ladderResults[finalWinningIdx];
+            const targetIdx = raids.indexOf(selectedName);
+            if (targetIdx > -1) raids.splice(targetIdx, 1);
+        }
+        else if (currentGame === 'lottery') {
             selectedName = raids[idx];
-            if (isWin) {
-                document.getElementById('game-display').innerText = `✨ ${selectedName} 방 만들어!!! ✨`;
-                raids.splice(idx, 1);
-                gameFinished = true;
-            } else {
+            if (!isWin) {
                 document.getElementById('game-display').innerText = `😥 ${selectedName}은(는) 아니야 다른거 가`;
+                setTimeout(() => {
+                    updateList(); isAnimating = false; gameLocked = false;
+                    document.getElementById('mode-selection').style.pointerEvents = 'auto';
+                    document.getElementById('mode-selection').style.opacity = '1';
+                    refreshUI();
+                }, 300);
+                return;
+            } else {
+                raids.splice(idx, 1);
             }
         }
+
+        document.getElementById('game-display').innerText = `✨ ${selectedName} 방 만들어!!! ✨`;
+        gameFinished = true;
+
         setTimeout(() => {
             updateList();
             isAnimating = false;
-            if (gameFinished) {
-                document.getElementById('next-action').style.display = 'block';
-            } else {
-                gameLocked = false;
-                document.getElementById('mode-selection').style.pointerEvents = 'auto';
-                document.getElementById('mode-selection').style.opacity = '1';
-                refreshUI();
-            }
+            document.getElementById('next-action').style.display = 'block';
         }, 300);
     }
 
